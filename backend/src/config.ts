@@ -1,0 +1,9 @@
+export const PORT = Number(process.env.PORT) || 3001;
+export const JWT_SECRET = process.env.JWT_SECRET || 'payroll-dev-secret-change-in-prod';
+export const JWT_EXPIRES_IN = '7d';
+export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+export const ALLOWED_EMAILS = ['esther@carnesbinefar.es', 'joan@carnesbinefar.es'];
+export const DB_PATH = process.env.DB_PATH || './payroll.db';
+export const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || '';
+export const EMAIL_FROM = process.env.EMAIL_FROM || 'nominas@carnesbinefar.es';
+export const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Gestión de Nóminas';
