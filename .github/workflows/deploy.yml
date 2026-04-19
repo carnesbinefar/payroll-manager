@@ -56,7 +56,7 @@ jobs:
     name: Trigger Render deploy
     runs-on: ubuntu-latest
     needs: deploy-frontend
-    if: ${{ vars.RENDER_DEPLOY_HOOK != '' || secrets.RENDER_DEPLOY_HOOK != '' }}
+    if: ${{ vars.RENDER_DEPLOY_HOOK != '' }}
     steps:
       - name: Trigger Render deploy hook
         run: |
