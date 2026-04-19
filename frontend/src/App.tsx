@@ -14,7 +14,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/payroll-manager">
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route
