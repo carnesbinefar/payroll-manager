@@ -21,6 +21,17 @@ function detectTypeFromFilename(filename: string): 'individual' | 'summary' {
   return filename.toUpperCase().startsWith('REC') ? 'individual' : 'summary';
 }
 
+// Extract period from filename as fallback
+// REC000600226.pdf → 0226 → 2026-02
+// 0006020260226.pdf → 20260226 → 2026-02
+function extractPeriodFromFilename(filename: string): string {
+  const recMatch = filename.match(/^REC\d{5}(\d{2})(\d{2})\.pdf$/i);
+  if (recMatch) return `20${recMatch[2]}-${recMatch[1]}`;
+  const summaryMatch = filename.match(/^\d{5}(\d{4})(\d{2})\d{2}\.pdf$/i);
+  if (summaryMatch) return `${summaryMatch[1]}-${summaryMatch[2]}`;
+  return '';
+}
+
 // GET /api/payroll/uploads
 router.get('/uploads', requireAuth, (_req: AuthRequest, res: Response) => {
   const uploads = db.prepare(`
@@ -58,7 +69,7 @@ router.post('/upload', requireAuth, upload.array('files'), async (req: AuthReque
         db.prepare('INSERT OR IGNORE INTO companies (id, name) VALUES (?, ?)').run(companyId, `Empresa ${companyId}`);
       }
 
-      // Parse to extract period
+      // Parse to extract period, fallback to filename
       let period = '';
       if (type === 'individual') {
         const payslips = await parseIndividualPdf(file.buffer, companyId);
@@ -67,6 +78,7 @@ router.post('/upload', requireAuth, upload.array('files'), async (req: AuthReque
         const rows = await parseSummaryPdf(file.buffer, companyId);
         period = rows[0]?.period || '';
       }
+      if (!period) period = extractPeriodFromFilename(file.originalname);
 
       if (!period) {
         results.push({ filename: file.originalname, status: 'error', error: 'Cannot extract period from PDF' });
