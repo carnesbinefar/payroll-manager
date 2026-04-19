@@ -12,6 +12,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173',
   'https://nominas.carnesbinefar.es',
+  'https://carnesbinefar.github.io',
   process.env.FRONTEND_URL,
 ].filter(Boolean) as string[];
 
