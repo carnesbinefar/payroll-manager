@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string; numpages: number }>;
+const pdfParse = require('pdf-parse') as (buf: Buffer, options?: { pagerender?: (pageData: any) => Promise<string> }) => Promise<{ text: string; numpages: number }>;
 
 export interface ParsedPayslip {
   employeeCode: string;
