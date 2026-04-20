@@ -65,28 +65,29 @@ function parsePeriod(text: string): string {
 
 // Extract a single page from a multi-page PDF
 export async function extractPageAsPdf(pdfBytes: Buffer, pageIndex: number): Promise<Buffer> {
-  // Spanish payroll PDFs are owner-password protected. pdf-lib ignores encryption
-  // but copies encrypted streams → blank pages. Use qpdf to decrypt first if available.
-  let workingBytes = pdfBytes;
+  // Spanish payroll PDFs are owner-password protected. pdf-lib copies encrypted
+  // streams → blank pages. Use gs (Ghostscript) to extract the page properly.
   const tag = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const tmpIn = join(tmpdir(), `nom_in_${tag}.pdf`);
-  const tmpOut = join(tmpdir(), `nom_dec_${tag}.pdf`);
+  const tmpOut = join(tmpdir(), `nom_out_${tag}.pdf`);
   try {
     writeFileSync(tmpIn, pdfBytes);
-    execSync(`qpdf --decrypt "${tmpIn}" "${tmpOut}"`, { stdio: 'ignore' });
-    workingBytes = readFileSync(tmpOut);
+    const pageNum = pageIndex + 1;
+    execSync(
+      `gs -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -dFirstPage=${pageNum} -dLastPage=${pageNum} -sOutputFile="${tmpOut}" "${tmpIn}"`,
+      { stdio: 'ignore' },
+    );
+    return readFileSync(tmpOut);
   } catch {
-    // qpdf not available — fall back to original (may yield blank pages)
+    // gs not available — fall back to pdf-lib (may yield blank pages on encrypted PDFs)
+    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    const newDoc = await PDFDocument.create();
+    const [page] = await newDoc.copyPages(srcDoc, [pageIndex]);
+    newDoc.addPage(page);
+    return Buffer.from(await newDoc.save());
   } finally {
     for (const f of [tmpIn, tmpOut]) try { unlinkSync(f); } catch { /* ignore */ }
   }
-
-  const srcDoc = await PDFDocument.load(workingBytes, { ignoreEncryption: true });
-  const newDoc = await PDFDocument.create();
-  const [page] = await newDoc.copyPages(srcDoc, [pageIndex]);
-  newDoc.addPage(page);
-  const bytes = await newDoc.save();
-  return Buffer.from(bytes);
 }
 
 export async function parseIndividualPdf(
