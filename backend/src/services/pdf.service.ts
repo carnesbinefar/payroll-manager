@@ -205,7 +205,8 @@ function parsePayslipText(text: string, pageIndex: number, companyId: string): P
 
   // Gross + IRPF: from the IRPF deduction line "Descuentos IRPF [%] [base=gross] [irpf_amount]"
   // The base of IRPF is always the gross pay (T. Devengado) in Spanish payslips.
-  const irpfLineMatch = text.match(/Descuentos\s+IRPF\s+[\d,\.]+\s+([\d\.]+,\d{2})\s+([\d\.]+,\d{2})/i);
+  // IRPF base may have 4 decimal places (e.g. "1.939,4600") — use \d+ not \d{2}
+  const irpfLineMatch = text.match(/Descuentos\s+IRPF\s+[\d,\.]+\s+([\d\.]+,\d+)\s+([\d\.]+,\d{2})/i);
   const grossPay = irpfLineMatch ? parseAmount(irpfLineMatch[1]) : 0;
   const irpf = irpfLineMatch ? parseAmount(irpfLineMatch[2]) : 0;
 
