@@ -203,34 +203,20 @@ function parsePayslipText(text: string, pageIndex: number, companyId: string): P
   // Period
   const period = parsePeriod(text);
 
-  // Gross pay: The T. Devengado value row is mixed with left-column concept amounts.
-  // The right-column always ends each line with [gross, total_deducciones].
-  // Take the second-to-last amount on the line immediately below the header.
-  const devLineMatch = text.match(/T\.\s*Devengado[^\n]*\n([^\n]+)/i);
-  let grossPay = 0;
-  if (devLineMatch) {
-    const amounts = devLineMatch[1].match(/([\d\.]+,\d{2})/g) || [];
-    if (amounts.length >= 2) grossPay = parseAmount(amounts[amounts.length - 2]);
-    else if (amounts.length === 1) grossPay = parseAmount(amounts[0]);
-  }
+  // Gross + IRPF: from the IRPF deduction line "Descuentos IRPF [%] [base=gross] [irpf_amount]"
+  // The base of IRPF is always the gross pay (T. Devengado) in Spanish payslips.
+  const irpfLineMatch = text.match(/Descuentos\s+IRPF\s+[\d,\.]+\s+([\d\.]+,\d{2})\s+([\d\.]+,\d{2})/i);
+  const grossPay = irpfLineMatch ? parseAmount(irpfLineMatch[1]) : 0;
+  const irpf = irpfLineMatch ? parseAmount(irpfLineMatch[2]) : 0;
 
-  // Net pay: "Líquido" and its value share the same Y position (same rendered line)
-  const liqSameLineMatch = text.match(/L[íi]quido\s+([\d\.]+,\d{2})/i);
-  const netPay = liqSameLineMatch
-    ? parseAmount(liqSameLineMatch[1])
-    : (() => { const i = text.search(/L[íi]quido/i); return i >= 0 ? extractFirstAmountAfter(text.slice(i)) : 0; })();
+  // SS totals: anchor search after "Aportación Trabajador" header to avoid matching
+  // the left sub-box "Total 2.072,16" which lands at the same Y as the Líquido value.
+  const ssTotalMatch = text.match(/Aportaci[oó]n\s+Trabajador[\s\S]*?^Total\s+([\d\.]+,\d{2})\s+([\d\.]+,\d{2})/im);
+  const ssWorker = ssTotalMatch ? parseAmount(ssTotalMatch[1]) : 0;
+  const ssEmployer = ssTotalMatch ? parseAmount(ssTotalMatch[2]) : 0;
 
-  // IRPF
-  const irpfMatch = text.match(/Descuentos\s+IRPF\s+[\d,\.]+\s+[\d,\.]+\s+([\d\.]+,\d{2})/i);
-  const irpf = irpfMatch ? parseAmount(irpfMatch[1]) : 0;
-
-  // SS employer: second amount on the "Total" line in the SS section
-  const ssMatch = text.match(/^Total\s+([\d\.]+,\d{2})\s+([\d\.]+,\d{2})/m);
-  const ssEmployer = ssMatch ? parseAmount(ssMatch[2]) : 0;
-
-  // SS worker is computed exactly from the accounting identity
-  const ssWorker = Math.round((grossPay - irpf - netPay) * 100) / 100;
-
+  // Net and total cost from accounting identities
+  const netPay = Math.round((grossPay - irpf - ssWorker) * 100) / 100;
   const totalCost = grossPay + ssEmployer;
 
   if (!employeeName || !period) {
