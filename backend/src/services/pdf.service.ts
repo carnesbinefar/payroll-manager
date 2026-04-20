@@ -66,16 +66,23 @@ export async function parseIndividualPdf(
   pdfBytes: Buffer,
   companyId: string,
 ): Promise<ParsedPayslip[]> {
-  const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-  const pageCount = pdfDoc.getPageCount();
-  const results: ParsedPayslip[] = [];
+  // Collect per-page text from the full (possibly encrypted) buffer.
+  // pdf-parse / pdfjs-dist can decrypt the streams natively; pdf-lib
+  // ignoreEncryption only skips the throw — it never decrypts content.
+  const pageTexts: string[] = [];
+  await pdfParse(pdfBytes, {
+    pagerender: (pageData: any) =>
+      pageData.getTextContent().then((tc: any) => {
+        const text = tc.items.map((item: any) => item.str).join(' ');
+        pageTexts.push(text);
+        return text;
+      }),
+  });
 
-  for (let i = 0; i < pageCount; i++) {
+  const results: ParsedPayslip[] = [];
+  for (let i = 0; i < pageTexts.length; i++) {
     try {
-      // Extract one page at a time — more reliable than pagerender callback
-      const pageBuf = await extractPageAsPdf(pdfBytes, i);
-      const { text } = await pdfParse(pageBuf);
-      const payslip = parsePayslipText(text, i, companyId);
+      const payslip = parsePayslipText(pageTexts[i], i, companyId);
       if (payslip) results.push(payslip);
     } catch (err) {
       console.error(`Error parsing page ${i}:`, err);

@@ -17,6 +17,14 @@ router.get('/', requireAuth, (_req: AuthRequest, res: Response) => {
   res.json(employees);
 });
 
+router.patch('/companies/:id/name', requireAuth, (req: AuthRequest, res: Response): void => {
+  const { name } = req.body;
+  if (!name?.trim()) { res.status(400).json({ error: 'Name required' }); return; }
+  const result = db.prepare('UPDATE companies SET name = ? WHERE id = ?').run(name.trim(), req.params.id);
+  if (result.changes === 0) { res.status(404).json({ error: 'Company not found' }); return; }
+  res.json({ ok: true });
+});
+
 router.patch('/:id/email', requireAuth, (req: AuthRequest, res: Response): void => {
   const { email } = req.body;
   if (email !== null && email !== undefined) {

@@ -9,6 +9,8 @@ export default function Employees() {
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editEmail, setEditEmail] = useState('');
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [editCompanyName, setEditCompanyName] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -28,6 +30,25 @@ export default function Employees() {
   };
 
   const cancelEdit = () => { setEditingId(null); setEditEmail(''); };
+
+  const startEditCompany = (companyId: string, companyName: string) => {
+    setEditingCompanyId(companyId);
+    setEditCompanyName(companyName);
+  };
+  const cancelEditCompany = () => { setEditingCompanyId(null); setEditCompanyName(''); };
+  const saveCompanyName = async (companyId: string) => {
+    if (!editCompanyName.trim()) return;
+    setSaving(true);
+    try {
+      await api.patch(`/employees/companies/${companyId}/name`, { name: editCompanyName.trim() });
+      setEmployees(prev => prev.map(e => e.company_id === companyId ? { ...e, company_name: editCompanyName.trim() } : e));
+      setEditingCompanyId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const saveEmail = async (emp: Employee) => {
     setSaving(true);
@@ -87,7 +108,33 @@ export default function Employees() {
               {filtered.map(emp => (
                 <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3 font-medium">{emp.name}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{emp.company_name}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">
+                    {editingCompanyId === emp.company_id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={editCompanyName}
+                          onChange={e => setEditCompanyName(e.target.value)}
+                          className="border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 w-40"
+                          autoFocus
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveCompanyName(emp.company_id);
+                            if (e.key === 'Escape') cancelEditCompany();
+                          }}
+                        />
+                        <button onClick={() => saveCompanyName(emp.company_id)} disabled={saving} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={12} /></button>
+                        <button onClick={cancelEditCompany} className="p-1 text-gray-400 hover:bg-gray-100 rounded"><X size={12} /></button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => startEditCompany(emp.company_id, emp.company_name)}
+                        className="hover:text-brand-600 hover:underline text-left"
+                        title="Editar nombre empresa"
+                      >
+                        {emp.company_name}
+                      </button>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{emp.category || '—'}</td>
                   <td className="px-4 py-3">
                     {editingId === emp.id ? (
