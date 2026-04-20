@@ -58,16 +58,48 @@ export default function EmployeeDetail() {
 
       <div className="card p-6 grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">NIF</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">NIF / NIE</p>
           <p className="font-medium">{employee.nif || '—'}</p>
         </div>
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">NASS</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">N.A.S.S.</p>
           <p className="font-medium">{employee.nass || '—'}</p>
         </div>
         <div>
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Categoría</p>
           <p className="font-medium">{employee.category || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Centro</p>
+          <p className="font-medium">{employee.centro || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Domicilio</p>
+          <p className="font-medium">{employee.domicilio || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Población</p>
+          <p className="font-medium">{employee.poblacion || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Antigüedad</p>
+          <p className="font-medium">{employee.antiguedad || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Contrato %</p>
+          <p className="font-medium">{employee.contrato || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">C.C.C.</p>
+          <p className="font-medium">{employee.ccc || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">CIF Empresa</p>
+          <p className="font-medium">{employee.cif_empresa || '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Código</p>
+          <p className="font-medium">{employee.code || '—'}</p>
         </div>
         <div>
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Email nómina</p>

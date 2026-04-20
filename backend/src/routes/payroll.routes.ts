@@ -127,14 +127,22 @@ router.post('/process/:uploadId', requireAuth, async (req: AuthRequest, res: Res
           // Upsert employee
           const empId = `${p.companyId}-${p.employeeCode}`;
           db.prepare(`
-            INSERT INTO employees (id, company_id, code, name, nif, nass, category)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO employees (id, company_id, code, name, nif, nass, category, centro, domicilio, poblacion, contrato, antiguedad, cif_empresa, ccc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               nif = excluded.nif,
               nass = excluded.nass,
-              category = excluded.category
-          `).run(empId, p.companyId, p.employeeCode, p.employeeName, p.nif, p.nass, p.category);
+              category = excluded.category,
+              centro = excluded.centro,
+              domicilio = excluded.domicilio,
+              poblacion = excluded.poblacion,
+              contrato = excluded.contrato,
+              antiguedad = excluded.antiguedad,
+              cif_empresa = excluded.cif_empresa,
+              ccc = excluded.ccc
+          `).run(empId, p.companyId, p.employeeCode, p.employeeName, p.nif, p.nass, p.category,
+                 p.centro, p.domicilio, p.poblacion, p.contrato, p.antiguedad, p.cifEmpresa, p.ccc);
 
           // Update company name if we got it
           if (p.companyName) {

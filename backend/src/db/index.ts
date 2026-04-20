@@ -23,6 +23,13 @@ db.exec(`
     category TEXT,
     email TEXT,
     active INTEGER DEFAULT 1,
+    centro TEXT,
+    domicilio TEXT,
+    poblacion TEXT,
+    contrato TEXT,
+    antiguedad TEXT,
+    cif_empresa TEXT,
+    ccc TEXT,
     UNIQUE(company_id, code)
   );
 
@@ -64,5 +71,10 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
 `);
+
+// Migrations: add columns that may not exist in older DBs
+for (const col of ['centro', 'domicilio', 'poblacion', 'contrato', 'antiguedad', 'cif_empresa', 'ccc']) {
+  try { db.exec(`ALTER TABLE employees ADD COLUMN ${col} TEXT`); } catch { /* already exists */ }
+}
 
 export default db;

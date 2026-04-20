@@ -9,6 +9,13 @@ export interface ParsedPayslip {
   nass: string;
   companyId: string;
   companyName: string;
+  cifEmpresa: string;
+  ccc: string;
+  centro: string;
+  domicilio: string;
+  poblacion: string;
+  contrato: string;
+  antiguedad: string;
   period: string;
   category: string;
   grossPay: number;
@@ -105,16 +112,62 @@ export async function parseIndividualPdf(
   return results;
 }
 
+function extractFirstAmountAfter(text: string): number {
+  // First number (format 1.234,56) that appears at the start of a line
+  const m = text.match(/\n[\s]*([\d\.]+,\d{2})/);
+  return m ? parseAmount(m[1]) : 0;
+}
+
 function parsePayslipText(text: string, pageIndex: number, companyId: string): ParsedPayslip | null {
-  // NIF — reliable anchor (8 digits + letter)
-  const nifMatch = text.match(/N\.I\.F\.\s+([0-9]{8}[A-Z])/i);
+  // Employee name: rest of line after "Trabajador/a" label
+  const nameMatch = text.match(/Trabajador\/a\s+([^\n]+)/i);
+  const employeeName = nameMatch ? nameMatch[1].trim() : '';
+
+  // Company name: line immediately after "Empresa Trabajador/a ..."
+  const companyMatch = text.match(/Empresa\s+Trabajador\/a[^\n]*\n([^\n]+)/i);
+  const companyName = companyMatch ? companyMatch[1].trim() : '';
+
+  // Work center: line after "Centro Categoría [cat]"
+  const centroMatch = text.match(/Centro\s+Categor[íi]a[^\n]*\n([^\n]+)/i);
+  const centro = centroMatch ? centroMatch[1].trim() : '';
+
+  // Category: rest of line after "Categoría"
+  const categoryMatch = text.match(/Categor[íi]a\s+([^\n]+)/i);
+  const category = categoryMatch ? categoryMatch[1].trim() : '';
+
+  // Domicilio + Contrato: both on the line after "Domicilio ... Contrato:"
+  const domLineMatch = text.match(/Domicilio[^\n]*Contrato:[^\n]*\n([^\n]+)/i);
+  const domLine = domLineMatch ? domLineMatch[1].trim() : '';
+  const domTokens = domLine.split(/\s+/);
+  const lastTok = domTokens[domTokens.length - 1] || '';
+  const contrato = /^\d+$/.test(lastTok) ? lastTok : '';
+  const domicilio = contrato ? domLine.replace(/\s+\d+\s*$/, '').trim() : domLine;
+
+  // Población: 2 lines after "Población Antigüedad" (first line = antigüedad date)
+  const pobMatch = text.match(/Poblaci[oó]n\s[^\n]*\n[^\n]*\n([^\n]+)/i);
+  const poblacion = pobMatch ? pobMatch[1].trim() : '';
+
+  // Antigüedad date
+  const antMatch = text.match(/Antig[üu]edad\s*\n([^\n]+)/i);
+  const antiguedad = antMatch ? antMatch[1].trim() : '';
+
+  // CCC
+  const cccMatch = text.match(/C\.C\.C\.\s+N\.A\.S\.S\.\s+(\S+)/i);
+  const ccc = cccMatch ? cccMatch[1] : '';
+
+  // Company CIF (B/A + 8 digits)
+  const cifMatch = text.match(/\b([AB]\d{8})\b/);
+  const cifEmpresa = cifMatch ? cifMatch[1] : '';
+
+  // NIF or NIE (8digits+letter OR X/Y/Z+7digits+letter)
+  const nifMatch = text.match(/\b([0-9]{8}[A-Z])\b/) || text.match(/\b([XYZ][0-9]{7}[A-Z])\b/);
   const nif = nifMatch ? nifMatch[1] : '';
 
-  // NASS
-  const nassMatch = text.match(/N\.A\.S\.S\.\s+(\d{12})/i);
+  // NASS: skip CCC code (e.g. "22/1058800/68"), capture 12 digits
+  const nassMatch = text.match(/N\.A\.S\.S\.\s+\S+\s+(\d{12})/i);
   const nass = nassMatch ? nassMatch[1] : '';
 
-  // Employee code: "Código  00060/06068-001"
+  // Employee code
   const codeMatch = text.match(/C[oó]digo\s+([\d\/\-]+)/i);
   let employeeCode = '';
   if (codeMatch) {
@@ -122,66 +175,39 @@ function parsePayslipText(text: string, pageIndex: number, companyId: string): P
     employeeCode = parts[parts.length - 1]?.trim() || codeMatch[1].trim();
   }
 
-  // Company name: text between "Empresa" and "Trabajador/a"
-  const companyMatch = text.match(/Empresa\s+(.+?)\s+Trabajador\/a/i);
-  const companyName = companyMatch ? companyMatch[1].trim() : '';
-
-  // Employee name: text between "Trabajador/a" and next label (Centro/Categoría)
-  // Limit to 4 words max to avoid bleeding into company name
-  const nameMatch = text.match(/Trabajador\/a\s+((?:[A-ZÁÉÍÓÚÑÜ\.]+\s+){1,4}[A-ZÁÉÍÓÚÑÜ\.]+)/i);
-  let employeeName = nameMatch ? nameMatch[1].trim() : '';
-  // Remove trailing company-indicator words if bled in
-  employeeName = employeeName.replace(/\s+(S\.L\.|S\.A\.|S\.L|S\.A)\.?\s*$/, '').trim();
-
-  // Category: between "Categoría" and next label
-  const categoryMatch = text.match(/Categor[íi]a\s+([A-ZÁÉÍÓÚÑÜ\(\)\s]+?)(?:\s+(?:Domicilio|Puesto|Centro|C\.C\.C|$))/i);
-  const category = categoryMatch ? categoryMatch[1].trim() : '';
-
   // Period
   const period = parsePeriod(text);
 
-  // Net pay — "Líquido  1.742,82"
-  const liquidoMatch = text.match(/L[íi]quido\s+([\d\.]+,\d{2})/i);
-  const netPay = liquidoMatch ? parseAmount(liquidoMatch[1]) : 0;
+  // Gross pay: first amount on new line after "T. Devengado"
+  const devIdx = text.search(/T\.\s*Devengado/i);
+  const grossPay = devIdx >= 0 ? extractFirstAmountAfter(text.slice(devIdx)) : 0;
 
-  // Gross pay — "T. Devengado ... 2.235,59"
-  const devengadoMatch = text.match(/T\.\s*Devengado\s+([\d\.]+,\d{2})/i);
-  const grossPay = devengadoMatch ? parseAmount(devengadoMatch[1]) : 0;
+  // Net pay: first amount on new line after "Líquido"
+  const liqIdx = text.search(/L[íi]quido/i);
+  const netPay = liqIdx >= 0 ? extractFirstAmountAfter(text.slice(liqIdx)) : 0;
 
   // IRPF
   const irpfMatch = text.match(/Descuentos\s+IRPF\s+[\d,\.]+\s+[\d,\.]+\s+([\d\.]+,\d{2})/i);
   const irpf = irpfMatch ? parseAmount(irpfMatch[1]) : 0;
 
-  // SS worker total
-  const ssWorkerMatch = text.match(/Total\s+([\d\.]+,\d{2})\s+[\d\.]+,\d{2}/);
-  const ssWorker = ssWorkerMatch ? parseAmount(ssWorkerMatch[1]) : 0;
-
-  // SS employer total
-  const ssEmployerMatch = text.match(/Total\s+[\d\.]+,\d{2}\s+([\d\.]+,\d{2})/);
-  const ssEmployer = ssEmployerMatch ? parseAmount(ssEmployerMatch[1]) : 0;
+  // SS worker + employer: "Total\n...\n{worker}  {employer}"
+  const ssMatch = text.match(/^Total\s+([\d\.]+,\d{2})\s+([\d\.]+,\d{2})/m);
+  const ssWorker = ssMatch ? parseAmount(ssMatch[1]) : 0;
+  const ssEmployer = ssMatch ? parseAmount(ssMatch[2]) : 0;
 
   const totalCost = grossPay + ssEmployer;
 
   if (!employeeName || !period) {
-    console.warn(`Page ${pageIndex}: could not extract employee or period. NIF=${nif}`);
+    console.warn(`Page ${pageIndex}: could not extract employee or period`);
     return null;
   }
 
   return {
-    employeeCode,
-    employeeName,
-    nif,
-    nass,
-    companyId,
-    companyName,
-    period,
-    category,
-    grossPay,
-    netPay,
-    irpf,
-    ssWorker,
-    ssEmployer,
-    totalCost,
+    employeeCode, employeeName, nif, nass,
+    companyId, companyName, cifEmpresa, ccc,
+    centro, domicilio, poblacion, contrato, antiguedad,
+    period, category,
+    grossPay, netPay, irpf, ssWorker, ssEmployer, totalCost,
     pageIndex,
   };
 }

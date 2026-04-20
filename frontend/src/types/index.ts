@@ -15,6 +15,13 @@ export interface Employee {
   category: string | null;
   email: string | null;
   active: number;
+  centro: string | null;
+  domicilio: string | null;
+  poblacion: string | null;
+  contrato: string | null;
+  antiguedad: string | null;
+  cif_empresa: string | null;
+  ccc: string | null;
   last_period: string | null;
   last_gross: number | null;
   last_net: number | null;
