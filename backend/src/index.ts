@@ -36,7 +36,7 @@ app.post('/api/admin/reset', (req, res) => {
   const { secret } = req.body;
   if (secret !== process.env.JWT_SECRET) { res.status(403).json({ error: 'Forbidden' }); return; }
   const db = require('./db').default;
-  db.exec('DELETE FROM email_sends; DELETE FROM payroll_records; DELETE FROM employees; DELETE FROM companies;');
+  db.exec('PRAGMA foreign_keys = OFF; DELETE FROM email_sends; DELETE FROM payroll_records; DELETE FROM payroll_uploads; DELETE FROM employees; DELETE FROM companies; PRAGMA foreign_keys = ON;');
   res.json({ ok: true, message: 'All data cleared. Re-process your uploads.' });
 });
 
