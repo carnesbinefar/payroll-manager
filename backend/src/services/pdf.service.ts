@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buf: Buffer, opts?: Record<string, unknown>) => Promise<{ text: string; numpages: number }>;
+const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string; numpages: number }>;
 
 export interface ParsedPayslip {
   employeeCode: string;
@@ -44,7 +44,7 @@ function parsePeriod(text: string): string {
     MAYO: '05', JUNIO: '06', JULIO: '07', AGOSTO: '08',
     SEPTIEMBRE: '09', OCTUBRE: '10', NOVIEMBRE: '11', DICIEMBRE: '12',
   };
-  const m = text.match(/Del\s+\d+\s+al\s+\d+\s+de\s+([A-ZÁÉÍÓÚ]+)\s+de\s+(\d{4})/i);
+  const m = text.match(/Del\s+\d+\s+al\s+\d+\s+de\s+([A-Z]+)\s+de\s+(\d{4})/i);
   if (m) {
     const month = months[m[1].toUpperCase()] || '01';
     return `${m[2]}-${month}`;
@@ -52,45 +52,48 @@ function parsePeriod(text: string): string {
   return '';
 }
 
-async function extractAllPagesText(pdfBytes: Buffer): Promise<string[]> {
-  const pageTexts: string[] = [];
-
-  await pdfParse(pdfBytes, {
-    pagerender: (pageData: { getTextContent: () => Promise<{ items: Array<{ str?: string }> }> }) =>
-      pageData.getTextContent().then(content => {
-        const text = content.items.map(i => i.str || '').join(' ');
-        pageTexts.push(text);
-        return text;
-      }),
-  });
-
-  return pageTexts;
+// Extract a single page from a multi-page PDF
+export async function extractPageAsPdf(pdfBytes: Buffer, pageIndex: number): Promise<Buffer> {
+  const srcDoc = await PDFDocument.load(pdfBytes);
+  const newDoc = await PDFDocument.create();
+  const [page] = await newDoc.copyPages(srcDoc, [pageIndex]);
+  newDoc.addPage(page);
+  const bytes = await newDoc.save();
+  return Buffer.from(bytes);
 }
 
 export async function parseIndividualPdf(
   pdfBytes: Buffer,
   companyId: string,
 ): Promise<ParsedPayslip[]> {
-  const pageTexts = await extractAllPagesText(pdfBytes);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const pageCount = pdfDoc.getPageCount();
   const results: ParsedPayslip[] = [];
 
-  for (let i = 0; i < pageTexts.length; i++) {
-    const payslip = parsePayslipText(pageTexts[i], i, companyId);
-    if (payslip) results.push(payslip);
+  for (let i = 0; i < pageCount; i++) {
+    try {
+      // Extract one page at a time — more reliable than pagerender callback
+      const pageBuf = await extractPageAsPdf(pdfBytes, i);
+      const { text } = await pdfParse(pageBuf);
+      const payslip = parsePayslipText(text, i, companyId);
+      if (payslip) results.push(payslip);
+    } catch (err) {
+      console.error(`Error parsing page ${i}:`, err);
+    }
   }
   return results;
 }
 
 function parsePayslipText(text: string, pageIndex: number, companyId: string): ParsedPayslip | null {
-  const nameMatch = text.match(/Trabajador\/a\s+([A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ ,.-]+?)(?:Centro|Categor)/i);
-  const employeeName = nameMatch ? nameMatch[1].trim() : '';
-
-  const nifMatch = text.match(/N\.I\.F\.\s+(\w+)/i);
+  // NIF — reliable anchor (8 digits + letter)
+  const nifMatch = text.match(/N\.I\.F\.\s+([0-9]{8}[A-Z])/i);
   const nif = nifMatch ? nifMatch[1] : '';
 
-  const nassMatch = text.match(/N\.A\.S\.S\.\s+(\d+)/i);
+  // NASS
+  const nassMatch = text.match(/N\.A\.S\.S\.\s+(\d{12})/i);
   const nass = nassMatch ? nassMatch[1] : '';
 
+  // Employee code: "Código  00060/06068-001"
   const codeMatch = text.match(/C[oó]digo\s+([\d\/\-]+)/i);
   let employeeCode = '';
   if (codeMatch) {
@@ -98,32 +101,50 @@ function parsePayslipText(text: string, pageIndex: number, companyId: string): P
     employeeCode = parts[parts.length - 1]?.trim() || codeMatch[1].trim();
   }
 
-  const companyMatch = text.match(/Empresa\s+([A-ZÁÉÍÓÚÑÜ][A-Z\s,\.]+?)(?:Trabajador|Centro)/i);
+  // Company name: text between "Empresa" and "Trabajador/a"
+  const companyMatch = text.match(/Empresa\s+(.+?)\s+Trabajador\/a/i);
   const companyName = companyMatch ? companyMatch[1].trim() : '';
 
-  const categoryMatch = text.match(/Categor[íi]a\s+([A-ZÁÉÍÓÚÑÜ][A-Z\s\(\)]+?)(?:Domicilio|Puesto|$)/i);
+  // Employee name: text between "Trabajador/a" and next label (Centro/Categoría)
+  // Limit to 4 words max to avoid bleeding into company name
+  const nameMatch = text.match(/Trabajador\/a\s+((?:[A-ZÁÉÍÓÚÑÜ\.]+\s+){1,4}[A-ZÁÉÍÓÚÑÜ\.]+)/i);
+  let employeeName = nameMatch ? nameMatch[1].trim() : '';
+  // Remove trailing company-indicator words if bled in
+  employeeName = employeeName.replace(/\s+(S\.L\.|S\.A\.|S\.L|S\.A)\.?\s*$/, '').trim();
+
+  // Category: between "Categoría" and next label
+  const categoryMatch = text.match(/Categor[íi]a\s+([A-ZÁÉÍÓÚÑÜ\(\)\s]+?)(?:\s+(?:Domicilio|Puesto|Centro|C\.C\.C|$))/i);
   const category = categoryMatch ? categoryMatch[1].trim() : '';
 
+  // Period
   const period = parsePeriod(text);
 
-  const devengadoMatch = text.match(/T\.\s*Devengado[^T]*?([\d]+[,\.]\d{2})/i);
-  const grossPay = devengadoMatch ? parseAmount(devengadoMatch[1]) : 0;
-
-  const liquidoMatch = text.match(/L[íi]quido\s+([\d]+[,\.]\d{2})/i);
+  // Net pay — "Líquido  1.742,82"
+  const liquidoMatch = text.match(/L[íi]quido\s+([\d\.]+,\d{2})/i);
   const netPay = liquidoMatch ? parseAmount(liquidoMatch[1]) : 0;
 
-  const irpfMatch = text.match(/Descuentos IRPF\s+[\d,\.]+\s+[\d,\.]+\s+([\d]+[,\.]\d{2})/i);
+  // Gross pay — "T. Devengado ... 2.235,59"
+  const devengadoMatch = text.match(/T\.\s*Devengado\s+([\d\.]+,\d{2})/i);
+  const grossPay = devengadoMatch ? parseAmount(devengadoMatch[1]) : 0;
+
+  // IRPF
+  const irpfMatch = text.match(/Descuentos\s+IRPF\s+[\d,\.]+\s+[\d,\.]+\s+([\d\.]+,\d{2})/i);
   const irpf = irpfMatch ? parseAmount(irpfMatch[1]) : 0;
 
-  const ssWorkerMatch = text.match(/Total\s+([\d]+[,\.]\d{2})\s+[\d]+[,\.]\d{2}/i);
+  // SS worker total
+  const ssWorkerMatch = text.match(/Total\s+([\d\.]+,\d{2})\s+[\d\.]+,\d{2}/);
   const ssWorker = ssWorkerMatch ? parseAmount(ssWorkerMatch[1]) : 0;
 
-  const ssEmployerMatch = text.match(/Total\s+[\d]+[,\.]\d{2}\s+([\d]+[,\.]\d{2})/i);
+  // SS employer total
+  const ssEmployerMatch = text.match(/Total\s+[\d\.]+,\d{2}\s+([\d\.]+,\d{2})/);
   const ssEmployer = ssEmployerMatch ? parseAmount(ssEmployerMatch[1]) : 0;
 
   const totalCost = grossPay + ssEmployer;
 
-  if (!employeeName || !period) return null;
+  if (!employeeName || !period) {
+    console.warn(`Page ${pageIndex}: could not extract employee or period. NIF=${nif}`);
+    return null;
+  }
 
   return {
     employeeCode,
@@ -148,51 +169,40 @@ export async function parseSummaryPdf(
   pdfBytes: Buffer,
   companyId: string,
 ): Promise<ParsedSummaryRow[]> {
-  const pageTexts = await extractAllPagesText(pdfBytes);
+  const { text } = await pdfParse(pdfBytes);
   const results: ParsedSummaryRow[] = [];
   let period = '';
 
-  for (const fullText of pageTexts) {
-    if (!period) {
-      const periodMatch = fullText.match(/Desde:\s+([A-ZÁÉÍÓÚ]+)\s+Hasta:/i);
-      const yearMatch = fullText.match(/Eje\.:\s+(\d{4})/i);
-      if (periodMatch && yearMatch) {
-        const months: Record<string, string> = {
-          ENERO: '01', FEBRERO: '02', MARZO: '03', ABRIL: '04',
-          MAYO: '05', JUNIO: '06', JULIO: '07', AGOSTO: '08',
-          SEPTIEMBRE: '09', OCTUBRE: '10', NOVIEMBRE: '11', DICIEMBRE: '12',
-        };
-        const m = months[periodMatch[1].toUpperCase()];
-        period = m ? `${yearMatch[1]}-${m}` : '';
-      }
-    }
+  // Period from "Eje.: 2026 ... Desde: FEBRERO"
+  const yearMatch = text.match(/Eje\.:\s*(\d{4})/i);
+  const monthMatch = text.match(/Desde:\s*([A-Z]+)\s+Hasta:/i);
+  if (yearMatch && monthMatch) {
+    const months: Record<string, string> = {
+      ENERO: '01', FEBRERO: '02', MARZO: '03', ABRIL: '04',
+      MAYO: '05', JUNIO: '06', JULIO: '07', AGOSTO: '08',
+      SEPTIEMBRE: '09', OCTUBRE: '10', NOVIEMBRE: '11', DICIEMBRE: '12',
+    };
+    const m = months[monthMatch[1].toUpperCase()];
+    if (m) period = `${yearMatch[1]}-${m}`;
+  }
 
-    const rowPattern = /(\d{5})\s+(\d{3})\s+([A-ZÁÉÍÓÚÑÜ][A-Z\s]+?)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)/g;
-    let match;
-    while ((match = rowPattern.exec(fullText)) !== null) {
-      results.push({
-        employeeCode: `${match[1]}-${match[2]}`,
-        employeeName: match[3].trim(),
-        grossPay: parseAmount(match[4]),
-        ssWorker: parseAmount(match[7]),
-        irpf: parseAmount(match[10]),
-        netPay: parseAmount(match[11]),
-        ssEmployer: parseAmount(match[12]),
-        totalCost: parseAmount(match[14]),
-        companyId,
-        period,
-      });
-    }
+  // Each row: "00003 001 ROMAN SORIA JAIME 3571,43 0,00 0,00 270,83 0,00 0,00 805,36 2495,24 1414,59 0,00 4986,02"
+  const rowPattern = /(\d{5})\s+(\d{3})\s+([A-ZÁÉÍÓÚÑÜ][A-Z\s]+?)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)/g;
+  let match;
+  while ((match = rowPattern.exec(text)) !== null) {
+    results.push({
+      employeeCode: `${match[1]}-${match[2]}`,
+      employeeName: match[3].trim(),
+      grossPay: parseAmount(match[4]),
+      ssWorker: parseAmount(match[7]),
+      irpf: parseAmount(match[10]),
+      netPay: parseAmount(match[11]),
+      ssEmployer: parseAmount(match[12]),
+      totalCost: parseAmount(match[14]),
+      companyId,
+      period,
+    });
   }
 
   return results;
-}
-
-export async function extractPageAsPdf(pdfBytes: Buffer, pageIndex: number): Promise<Buffer> {
-  const srcDoc = await PDFDocument.load(pdfBytes);
-  const newDoc = await PDFDocument.create();
-  const [page] = await newDoc.copyPages(srcDoc, [pageIndex]);
-  newDoc.addPage(page);
-  const bytes = await newDoc.save();
-  return Buffer.from(bytes);
 }
