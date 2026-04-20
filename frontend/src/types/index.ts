@@ -87,6 +87,12 @@ export interface DashboardData {
     total_gross: number;
     total_cost: number;
   }>;
+  byCentro: Array<{
+    centro: string;
+    employee_count: number;
+    total_gross: number;
+    total_cost: number;
+  }>;
   totals: {
     total_employees: number;
     ytd_gross: number;

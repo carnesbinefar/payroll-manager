@@ -61,11 +61,15 @@ function parsePeriod(text: string): string {
 
 // Extract a single page from a multi-page PDF
 export async function extractPageAsPdf(pdfBytes: Buffer, pageIndex: number): Promise<Buffer> {
-  // Load without ignoreEncryption so pdf-lib properly decrypts content streams.
-  // Spanish payroll PDFs use owner-only protection (empty user password), which pdf-lib handles.
-  const srcDoc = await PDFDocument.load(pdfBytes).catch(() =>
-    PDFDocument.load(pdfBytes, { ignoreEncryption: true })
-  );
+  // Spanish payroll PDFs use owner-only protection (empty user password).
+  // Providing password:'' lets pdf-lib decrypt content streams properly.
+  // Fall back to ignoreEncryption if the PDF truly has no user password support.
+  let srcDoc: PDFDocument;
+  try {
+    srcDoc = await PDFDocument.load(pdfBytes, { password: '' });
+  } catch {
+    srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+  }
   const newDoc = await PDFDocument.create();
   const [page] = await newDoc.copyPages(srcDoc, [pageIndex]);
   newDoc.addPage(page);
@@ -186,13 +190,22 @@ function parsePayslipText(text: string, pageIndex: number, companyId: string): P
   // Period
   const period = parsePeriod(text);
 
-  // Gross pay: first amount on new line after "T. Devengado"
-  const devIdx = text.search(/T\.\s*Devengado/i);
-  const grossPay = devIdx >= 0 ? extractFirstAmountAfter(text.slice(devIdx)) : 0;
+  // Gross pay: The T. Devengado value row is mixed with left-column concept amounts.
+  // The right-column always ends each line with [gross, total_deducciones].
+  // Take the second-to-last amount on the line immediately below the header.
+  const devLineMatch = text.match(/T\.\s*Devengado[^\n]*\n([^\n]+)/i);
+  let grossPay = 0;
+  if (devLineMatch) {
+    const amounts = devLineMatch[1].match(/([\d\.]+,\d{2})/g) || [];
+    if (amounts.length >= 2) grossPay = parseAmount(amounts[amounts.length - 2]);
+    else if (amounts.length === 1) grossPay = parseAmount(amounts[0]);
+  }
 
-  // Net pay: first amount on new line after "Líquido"
-  const liqIdx = text.search(/L[íi]quido/i);
-  const netPay = liqIdx >= 0 ? extractFirstAmountAfter(text.slice(liqIdx)) : 0;
+  // Net pay: "Líquido" and its value share the same Y position (same rendered line)
+  const liqSameLineMatch = text.match(/L[íi]quido\s+([\d\.]+,\d{2})/i);
+  const netPay = liqSameLineMatch
+    ? parseAmount(liqSameLineMatch[1])
+    : (() => { const i = text.search(/L[íi]quido/i); return i >= 0 ? extractFirstAmountAfter(text.slice(i)) : 0; })();
 
   // IRPF
   const irpfMatch = text.match(/Descuentos\s+IRPF\s+[\d,\.]+\s+[\d,\.]+\s+([\d\.]+,\d{2})/i);

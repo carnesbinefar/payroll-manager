@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Users, TrendingUp, Euro, Building2 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend,
+  Tooltip, ResponsiveContainer, Legend, Cell,
 } from 'recharts';
 import { api } from '../utils/api';
 import { formatEur, formatPeriod } from '../utils/format';
@@ -25,7 +25,10 @@ function StatCard({ icon: Icon, label, value, sub }: {
   );
 }
 
-const COLORS = ['#0ea5e9', '#38bdf8', '#7dd3fc'];
+const CENTRO_COLORS = [
+  '#0ea5e9', '#38bdf8', '#7dd3fc', '#0284c7', '#0369a1',
+  '#06b6d4', '#22d3ee', '#67e8f9', '#a5f3fc', '#cffafe',
+];
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -124,37 +127,34 @@ export default function Dashboard() {
         </>
       )}
 
-      {data.byCompany.length > 0 && (
+      {(data.byCentro ?? []).length > 0 && (
         <div className="card p-6">
-          <h2 className="font-semibold mb-4">Por empresa</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-left text-gray-500">
-                  <th className="pb-3 font-medium">Empresa</th>
-                  <th className="pb-3 font-medium text-right">Empleados</th>
-                  <th className="pb-3 font-medium text-right">Masa salarial</th>
-                  <th className="pb-3 font-medium text-right">Coste total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {data.byCompany.map((c, i) => (
-                  <tr key={c.company_id}>
-                    <td className="py-3 flex items-center gap-2">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ background: COLORS[i % COLORS.length] }}
-                      />
-                      {c.company_name}
-                    </td>
-                    <td className="py-3 text-right">{c.employee_count}</td>
-                    <td className="py-3 text-right">{formatEur(c.total_gross || 0)}</td>
-                    <td className="py-3 text-right">{formatEur(c.total_cost || 0)}</td>
-                  </tr>
+          <h2 className="font-semibold mb-4">Masa salarial por centro</h2>
+          <ResponsiveContainer width="100%" height={Math.max(200, (data.byCentro ?? []).length * 48)}>
+            <BarChart
+              layout="vertical"
+              data={(data.byCentro ?? []).map(c => ({
+                name: c.centro,
+                'Masa salarial': Math.round(c.total_gross || 0),
+                'Empleados': c.employee_count,
+              }))}
+              margin={{ left: 16, right: 32, top: 4, bottom: 4 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+              <XAxis type="number" tickFormatter={v => `${(v / 1000).toFixed(0)}k€`} tick={{ fontSize: 12 }} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={160} />
+              <Tooltip
+                formatter={(v: number, name: string) =>
+                  name === 'Masa salarial' ? [formatEur(v), name] : [v, name]
+                }
+              />
+              <Bar dataKey="Masa salarial" radius={[0, 4, 4, 0]}>
+                {(data.byCentro ?? []).map((_c, i) => (
+                  <Cell key={i} fill={CENTRO_COLORS[i % CENTRO_COLORS.length]} />
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
 

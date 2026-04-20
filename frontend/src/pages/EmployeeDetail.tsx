@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Download, Mail, Pencil, Check, X } from 'lucide-react';
+
+function monthsSince(dateStr: string | null): string {
+  if (!dateStr) return '—';
+  const m = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return dateStr;
+  const date = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  const now = new Date();
+  const months = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
+  return `${Math.max(0, months)} meses`;
+}
 import { api } from '../utils/api';
 import { formatEur, formatPeriodLong } from '../utils/format';
 import type { Employee, PayrollRecord } from '../types';
@@ -83,7 +93,7 @@ export default function EmployeeDetail() {
         </div>
         <div>
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Antigüedad</p>
-          <p className="font-medium">{employee.antiguedad || '—'}</p>
+          <p className="font-medium">{monthsSince(employee.antiguedad)}</p>
         </div>
         <div>
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Contrato %</p>

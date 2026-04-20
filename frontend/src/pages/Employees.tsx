@@ -5,7 +5,17 @@ import { api } from '../utils/api';
 import { formatEur, formatPeriodLong } from '../utils/format';
 import type { Employee } from '../types';
 
-type SortCol = 'name' | 'company' | 'category' | 'net' | 'period';
+type SortCol = 'name' | 'company' | 'category' | 'centro' | 'net' | 'period';
+
+function monthsSince(dateStr: string | null): string {
+  if (!dateStr) return '—';
+  const m = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return dateStr;
+  const date = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  const now = new Date();
+  const months = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
+  return `${Math.max(0, months)} meses`;
+}
 type SortDir = 'asc' | 'desc';
 
 function SortIcon({ col, active, dir }: { col: string; active: SortCol; dir: SortDir }) {
@@ -20,6 +30,7 @@ export default function Employees() {
   const [search, setSearch] = useState('');
   const [filterCompany, setFilterCompany] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterCentro, setFilterCentro] = useState('');
   const [sortCol, setSortCol] = useState<SortCol>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,10 +55,16 @@ export default function Employees() {
     return cats.sort();
   }, [employees]);
 
+  const centros = useMemo(() => {
+    const cs = [...new Set(employees.map(e => e.centro).filter(Boolean))] as string[];
+    return cs.sort();
+  }, [employees]);
+
   const filtered = useMemo(() => {
     let list = employees.filter(e =>
       (!filterCompany || e.company_id === filterCompany) &&
       (!filterCategory || e.category === filterCategory) &&
+      (!filterCentro || e.centro === filterCentro) &&
       (
         e.name.toLowerCase().includes(search.toLowerCase()) ||
         e.company_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -61,6 +78,7 @@ export default function Employees() {
       if (sortCol === 'name') { av = a.name; bv = b.name; }
       else if (sortCol === 'company') { av = a.company_name; bv = b.company_name; }
       else if (sortCol === 'category') { av = a.category || ''; bv = b.category || ''; }
+      else if (sortCol === 'centro') { av = a.centro || ''; bv = b.centro || ''; }
       else if (sortCol === 'net') { av = a.last_net ?? 0; bv = b.last_net ?? 0; }
       else if (sortCol === 'period') { av = a.last_period || ''; bv = b.last_period || ''; }
       const cmp = typeof av === 'number' ? av - (bv as number) : (av as string).localeCompare(bv as string);
@@ -68,7 +86,7 @@ export default function Employees() {
     });
 
     return list;
-  }, [employees, search, filterCompany, filterCategory, sortCol, sortDir]);
+  }, [employees, search, filterCompany, filterCategory, filterCentro, sortCol, sortDir]);
 
   const toggleSort = (col: SortCol) => {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -151,6 +169,14 @@ export default function Employees() {
           <option value="">Todas las categorías</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+        <select
+          value={filterCentro}
+          onChange={e => setFilterCentro(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+        >
+          <option value="">Todos los centros</option>
+          {centros.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
       </div>
 
       <div className="card overflow-hidden">
@@ -176,6 +202,13 @@ export default function Employees() {
                 >
                   Categoría <SortIcon col="category" active={sortCol} dir={sortDir} />
                 </th>
+                <th
+                  className="px-4 py-3 text-left font-medium text-gray-500 cursor-pointer hover:text-gray-800 select-none"
+                  onClick={() => toggleSort('centro')}
+                >
+                  Centro <SortIcon col="centro" active={sortCol} dir={sortDir} />
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Antigüedad</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Email nómina</th>
                 <th
                   className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer hover:text-gray-800 select-none"
@@ -231,6 +264,8 @@ export default function Employees() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-xs">{emp.category || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{emp.centro || '—'}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{monthsSince(emp.antiguedad)}</td>
                   <td className="px-4 py-3">
                     {editingId === emp.id ? (
                       <div className="flex items-center gap-2">
@@ -287,7 +322,7 @@ export default function Employees() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                     {search || filterCompany || filterCategory ? 'No se encontraron resultados' : 'Sin empleados. Sube PDFs de nóminas primero.'}
                   </td>
                 </tr>

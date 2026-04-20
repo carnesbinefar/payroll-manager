@@ -277,7 +277,19 @@ router.get('/dashboard', requireAuth, (_req: AuthRequest, res: Response) => {
     WHERE period LIKE ?
   `).get(`${new Date().getFullYear()}-%`);
 
-  res.json({ monthly, byCompany, totals });
+  const byCentro = db.prepare(`
+    SELECT
+      COALESCE(e.centro, 'Sin centro') as centro,
+      COUNT(DISTINCT e.id) as employee_count,
+      SUM(r.gross_pay) as total_gross,
+      SUM(r.total_cost) as total_cost
+    FROM employees e
+    LEFT JOIN payroll_records r ON r.employee_id = e.id
+    GROUP BY e.centro
+    ORDER BY total_gross DESC
+  `).all();
+
+  res.json({ monthly, byCompany, byCentro, totals });
 });
 
 // GET /api/payroll/records/:id/pdf — download individual payslip
