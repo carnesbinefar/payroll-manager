@@ -31,6 +31,15 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Reset all parsed data (keeps uploads intact so they can be re-processed)
+app.post('/api/admin/reset', (req, res) => {
+  const { secret } = req.body;
+  if (secret !== process.env.JWT_SECRET) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const db = require('./db').default;
+  db.exec('DELETE FROM email_sends; DELETE FROM payroll_records; DELETE FROM employees; DELETE FROM companies;');
+  res.json({ ok: true, message: 'All data cleared. Re-process your uploads.' });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/employees', employeesRoutes);
