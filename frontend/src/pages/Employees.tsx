@@ -63,7 +63,7 @@ export default function Employees() {
       else if (sortCol === 'category') { av = a.category || ''; bv = b.category || ''; }
       else if (sortCol === 'net') { av = a.last_net ?? 0; bv = b.last_net ?? 0; }
       else if (sortCol === 'period') { av = a.last_period || ''; bv = b.last_period || ''; }
-      const cmp = typeof av === 'number' ? av - bv : (av as string).localeCompare(bv as string);
+      const cmp = typeof av === 'number' ? av - (bv as number) : (av as string).localeCompare(bv as string);
       return sortDir === 'asc' ? cmp : -cmp;
     });
 
