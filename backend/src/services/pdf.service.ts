@@ -61,7 +61,11 @@ function parsePeriod(text: string): string {
 
 // Extract a single page from a multi-page PDF
 export async function extractPageAsPdf(pdfBytes: Buffer, pageIndex: number): Promise<Buffer> {
-  const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+  // Load without ignoreEncryption so pdf-lib properly decrypts content streams.
+  // Spanish payroll PDFs use owner-only protection (empty user password), which pdf-lib handles.
+  const srcDoc = await PDFDocument.load(pdfBytes).catch(() =>
+    PDFDocument.load(pdfBytes, { ignoreEncryption: true })
+  );
   const newDoc = await PDFDocument.create();
   const [page] = await newDoc.copyPages(srcDoc, [pageIndex]);
   newDoc.addPage(page);
@@ -167,12 +171,16 @@ function parsePayslipText(text: string, pageIndex: number, companyId: string): P
   const nassMatch = text.match(/N\.A\.S\.S\.\s+\S+\s+(\d{12})/i);
   const nass = nassMatch ? nassMatch[1] : '';
 
-  // Employee code
-  const codeMatch = text.match(/C[oó]digo\s+([\d\/\-]+)/i);
-  let employeeCode = '';
-  if (codeMatch) {
-    const parts = codeMatch[1].split('/');
-    employeeCode = parts[parts.length - 1]?.trim() || codeMatch[1].trim();
+  // Employee code: look for companyId/empCode pattern (e.g. "00006/00003")
+  const empCodeMatch = text.match(new RegExp(`\\b${companyId}\\/(\\d+)\\b`));
+  let employeeCode = empCodeMatch ? empCodeMatch[1] : '';
+  if (!employeeCode) {
+    // fallback: generic "Código XXXXX/YYYYY"
+    const codeMatch = text.match(/C[oó]digo\s+([\d\/\-]+)/i);
+    if (codeMatch) {
+      const parts = codeMatch[1].split('/');
+      employeeCode = parts[parts.length - 1]?.trim() || codeMatch[1].trim();
+    }
   }
 
   // Period
@@ -190,10 +198,12 @@ function parsePayslipText(text: string, pageIndex: number, companyId: string): P
   const irpfMatch = text.match(/Descuentos\s+IRPF\s+[\d,\.]+\s+[\d,\.]+\s+([\d\.]+,\d{2})/i);
   const irpf = irpfMatch ? parseAmount(irpfMatch[1]) : 0;
 
-  // SS worker + employer: "Total\n...\n{worker}  {employer}"
+  // SS employer: second amount on the "Total" line in the SS section
   const ssMatch = text.match(/^Total\s+([\d\.]+,\d{2})\s+([\d\.]+,\d{2})/m);
-  const ssWorker = ssMatch ? parseAmount(ssMatch[1]) : 0;
   const ssEmployer = ssMatch ? parseAmount(ssMatch[2]) : 0;
+
+  // SS worker is computed exactly from the accounting identity
+  const ssWorker = Math.round((grossPay - irpf - netPay) * 100) / 100;
 
   const totalCost = grossPay + ssEmployer;
 
