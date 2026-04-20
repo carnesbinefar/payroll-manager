@@ -54,7 +54,7 @@ function parsePeriod(text: string): string {
 
 // Extract a single page from a multi-page PDF
 export async function extractPageAsPdf(pdfBytes: Buffer, pageIndex: number): Promise<Buffer> {
-  const srcDoc = await PDFDocument.load(pdfBytes);
+  const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const newDoc = await PDFDocument.create();
   const [page] = await newDoc.copyPages(srcDoc, [pageIndex]);
   newDoc.addPage(page);
@@ -66,7 +66,7 @@ export async function parseIndividualPdf(
   pdfBytes: Buffer,
   companyId: string,
 ): Promise<ParsedPayslip[]> {
-  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const pageCount = pdfDoc.getPageCount();
   const results: ParsedPayslip[] = [];
 
