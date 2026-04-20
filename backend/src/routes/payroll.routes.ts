@@ -32,6 +32,12 @@ function extractPeriodFromFilename(filename: string): string {
   return '';
 }
 
+// POST /api/payroll/reset — wipe all data (requires auth)
+router.post('/reset', requireAuth, (_req: AuthRequest, res: Response): void => {
+  db.exec('PRAGMA foreign_keys = OFF; DELETE FROM email_sends; DELETE FROM payroll_records; DELETE FROM payroll_uploads; DELETE FROM employees; DELETE FROM companies; PRAGMA foreign_keys = ON;');
+  res.json({ ok: true });
+});
+
 // GET /api/payroll/uploads
 router.get('/uploads', requireAuth, (_req: AuthRequest, res: Response) => {
   const uploads = db.prepare(`
@@ -206,7 +212,7 @@ router.post('/process/:uploadId', requireAuth, async (req: AuthRequest, res: Res
 
 // GET /api/payroll/records — all payroll records with filters
 router.get('/records', requireAuth, (req: AuthRequest, res: Response) => {
-  const { period, company_id } = req.query;
+  const { period, company_id, employee_id } = req.query;
   let query = `
     SELECT r.*, e.name as employee_name, e.email as employee_email, c.name as company_name
     FROM payroll_records r
@@ -217,6 +223,7 @@ router.get('/records', requireAuth, (req: AuthRequest, res: Response) => {
   const params: string[] = [];
   if (period) { query += ' AND r.period = ?'; params.push(String(period)); }
   if (company_id) { query += ' AND r.company_id = ?'; params.push(String(company_id)); }
+  if (employee_id) { query += ' AND r.employee_id = ?'; params.push(String(employee_id)); }
   query += ' ORDER BY r.period DESC, e.name ASC';
 
   const records = db.prepare(query).all(...params);

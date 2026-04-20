@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Upload, FileText, Send, RefreshCw, CheckCircle, XCircle, Clock, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, FileText, Send, RefreshCw, CheckCircle, XCircle, Clock, Download, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
 import { formatPeriodLong } from '../utils/format';
 import type { PayrollUpload, PayrollRecord, EmailSend } from '../types';
@@ -12,11 +12,64 @@ function StatusBadge({ status }: { status: EmailSend['status'] }) {
   return <span className="badge-yellow">Pendiente</span>;
 }
 
+function ResetModal({ onClose }: { onClose: () => void }) {
+  const [confirm, setConfirm] = useState('');
+  const [resetting, setResetting] = useState(false);
+
+  const doReset = async () => {
+    setResetting(true);
+    try {
+      await api.post('/payroll/reset', {});
+      window.location.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error');
+      setResetting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+        <div className="flex items-center gap-3 text-red-600">
+          <Trash2 size={20} />
+          <h2 className="text-lg font-bold">Borrar todos los datos</h2>
+        </div>
+        <p className="text-sm text-gray-600">
+          Esta acción eliminará <strong>todos los empleados, nóminas, archivos subidos e historial de envíos</strong> de forma irreversible.
+        </p>
+        <p className="text-sm text-gray-600">
+          Escribe <strong>BORRAR</strong> para confirmar:
+        </p>
+        <input
+          type="text"
+          value={confirm}
+          onChange={e => setConfirm(e.target.value)}
+          placeholder="BORRAR"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+          autoFocus
+        />
+        <div className="flex gap-3 justify-end">
+          <button onClick={onClose} className="btn-secondary">Cancelar</button>
+          <button
+            onClick={doReset}
+            disabled={confirm !== 'BORRAR' || resetting}
+            className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors"
+          >
+            {resetting ? <RefreshCw size={14} className="animate-spin inline mr-1" /> : null}
+            Borrar todo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UploadSection() {
   const [dragging, setDragging] = useState(false);
   const [uploads, setUploads] = useState<PayrollUpload[]>([]);
   const [processing, setProcessing] = useState<Record<string, boolean>>({});
   const [uploadResult, setUploadResult] = useState<string>('');
+  const [showReset, setShowReset] = useState(false);
 
   const loadUploads = useCallback(() => {
     api.get<PayrollUpload[]>('/payroll/uploads').then(setUploads).catch(console.error);
@@ -145,6 +198,17 @@ function UploadSection() {
       {uploads.length === 0 && (
         <p className="text-center text-gray-400 py-8">No hay archivos subidos todavía</p>
       )}
+
+      <div className="border-t border-gray-100 pt-4 flex justify-end">
+        <button
+          onClick={() => setShowReset(true)}
+          className="flex items-center gap-2 text-xs text-red-400 hover:text-red-600 transition-colors"
+        >
+          <Trash2 size={13} /> Borrar todos los datos
+        </button>
+      </div>
+
+      {showReset && <ResetModal onClose={() => setShowReset(false)} />}
     </div>
   );
 }

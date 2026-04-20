@@ -17,6 +17,17 @@ router.get('/', requireAuth, (_req: AuthRequest, res: Response) => {
   res.json(employees);
 });
 
+router.get('/:id', requireAuth, (req: AuthRequest, res: Response): void => {
+  const employee = db.prepare(`
+    SELECT e.*, c.name as company_name
+    FROM employees e
+    JOIN companies c ON c.id = e.company_id
+    WHERE e.id = ?
+  `).get(req.params.id);
+  if (!employee) { res.status(404).json({ error: 'Not found' }); return; }
+  res.json(employee);
+});
+
 router.patch('/companies/:id/name', requireAuth, (req: AuthRequest, res: Response): void => {
   const { name } = req.body;
   if (!name?.trim()) { res.status(400).json({ error: 'Name required' }); return; }

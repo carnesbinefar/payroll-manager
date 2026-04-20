@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';
+import EmployeeDetail from './pages/EmployeeDetail';
 import Payroll from './pages/Payroll';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -27,6 +28,7 @@ export default function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="employees" element={<Employees />} />
+          <Route path="employees/:id" element={<EmployeeDetail />} />
           <Route path="payroll" element={<Payroll />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

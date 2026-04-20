@@ -73,7 +73,21 @@ export async function parseIndividualPdf(
   await pdfParse(pdfBytes, {
     pagerender: (pageData: any) =>
       pageData.getTextContent().then((tc: any) => {
-        const text = tc.items.map((item: any) => item.str).join(' ');
+        // Reproduce newline layout by Y position, same as pdf-parse default renderer
+        let lastY: number | null = null;
+        let text = '';
+        for (const item of tc.items) {
+          if (!item.str) continue;
+          const y = Math.round(item.transform[5]);
+          if (lastY === null) {
+            text += item.str;
+          } else if (y !== lastY) {
+            text += '\n' + item.str;
+          } else {
+            text += ' ' + item.str;
+          }
+          lastY = y;
+        }
         pageTexts.push(text);
         return text;
       }),
