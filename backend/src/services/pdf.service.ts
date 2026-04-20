@@ -1,4 +1,8 @@
 import { PDFDocument } from 'pdf-lib';
+import { execSync } from 'child_process';
+import { writeFileSync, readFileSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require('pdf-parse') as (buf: Buffer, options?: { pagerender?: (pageData: any) => Promise<string> }) => Promise<{ text: string; numpages: number }>;
 
@@ -61,15 +65,23 @@ function parsePeriod(text: string): string {
 
 // Extract a single page from a multi-page PDF
 export async function extractPageAsPdf(pdfBytes: Buffer, pageIndex: number): Promise<Buffer> {
-  // Spanish payroll PDFs use owner-only protection (empty user password).
-  // Providing password:'' lets pdf-lib decrypt content streams properly.
-  // Fall back to ignoreEncryption if the PDF truly has no user password support.
-  let srcDoc: PDFDocument;
+  // Spanish payroll PDFs are owner-password protected. pdf-lib ignores encryption
+  // but copies encrypted streams → blank pages. Use qpdf to decrypt first if available.
+  let workingBytes = pdfBytes;
+  const tag = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const tmpIn = join(tmpdir(), `nom_in_${tag}.pdf`);
+  const tmpOut = join(tmpdir(), `nom_dec_${tag}.pdf`);
   try {
-    srcDoc = await PDFDocument.load(pdfBytes, { password: '' });
+    writeFileSync(tmpIn, pdfBytes);
+    execSync(`qpdf --decrypt "${tmpIn}" "${tmpOut}"`, { stdio: 'ignore' });
+    workingBytes = readFileSync(tmpOut);
   } catch {
-    srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    // qpdf not available — fall back to original (may yield blank pages)
+  } finally {
+    for (const f of [tmpIn, tmpOut]) try { unlinkSync(f); } catch { /* ignore */ }
   }
+
+  const srcDoc = await PDFDocument.load(workingBytes, { ignoreEncryption: true });
   const newDoc = await PDFDocument.create();
   const [page] = await newDoc.copyPages(srcDoc, [pageIndex]);
   newDoc.addPage(page);
